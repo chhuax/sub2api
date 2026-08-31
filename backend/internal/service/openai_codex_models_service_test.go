@@ -1805,6 +1805,65 @@ func TestConvertOpenAIModelListToCodexManifestUsesCompleteDescriptors(t *testing
 	require.Equal(t, "GPT-5.5", models[0]["display_name"])
 	require.Equal(t, "medium", models[0]["default_reasoning_level"])
 	require.Len(t, models[0]["supported_reasoning_levels"], 4)
+	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
+}
+
+func TestCompleteAPIKeyCodexModelsManifestForClientUsesModelImageFallbackForConvertedList(t *testing.T) {
+	t.Parallel()
+
+	account := newCodexModelsAPIKeyTestAccount("https://upstream.example/v1")
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body: io.NopCloser(strings.NewReader(`{"object":"list","data":[
+				{"id":"gpt-5.6-sol"},
+				{"id":"gpt-4"}
+			]}`)),
+		}, nil
+	}}
+	svc := newCodexModelsAPIKeyTestService(upstream)
+
+	manifest, err := svc.FetchCodexModelsManifest(context.Background(), account, "0.150.0", "")
+	require.NoError(t, err)
+	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
+
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 2)
+	bySlug := map[string]map[string]any{}
+	for _, model := range models {
+		bySlug[model["slug"].(string)] = model
+	}
+	require.Equal(t, []any{"text", "image"}, bySlug["gpt-5.6-sol"]["input_modalities"])
+	require.Equal(t, []any{"text"}, bySlug["gpt-4"]["input_modalities"])
+}
+
+func TestCompleteAPIKeyCodexModelsManifestForClientUsesSyncedModalitiesOverConvertedModelFallback(t *testing.T) {
+	t.Parallel()
+
+	account := newCodexModelsAPIKeyTestAccount("https://upstream.example/v1")
+	account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+		"gpt-5.6-sol": {
+			ID:              "gpt-5.6-sol",
+			InputModalities: []string{"text"},
+		},
+	}})
+	upstream := &codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"object":"list","data":[{"id":"gpt-5.6-sol"}]}`)),
+		}, nil
+	}}
+	svc := newCodexModelsAPIKeyTestService(upstream)
+
+	manifest, err := svc.FetchCodexModelsManifest(context.Background(), account, "0.150.0", "")
+	require.NoError(t, err)
+	require.NoError(t, svc.CompleteAPIKeyCodexModelsManifestForClient(manifest, account))
+
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
 }
 
 func TestCompleteAPIKeyCodexModelsManifestForClientPreservesProviderMetadata(t *testing.T) {

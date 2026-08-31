@@ -1895,17 +1895,21 @@ func convertOpenAIModelListToCodexManifest(body []byte) []byte {
 		return body
 	}
 	modelIDs := make([]string, 0, len(entries))
+	imageInputModels := make(map[string]bool, len(entries))
 	for _, entry := range entries {
 		id := strings.TrimSpace(entry.ID)
 		if id == "" {
 			continue
 		}
 		modelIDs = append(modelIDs, id)
+		if isOpenAICodexImageInputModel(id) {
+			imageInputModels[id] = true
+		}
 	}
 	if len(modelIDs) == 0 {
 		return body
 	}
-	converted, err := BuildCodexModelsManifest(modelIDs)
+	converted, err := buildCodexModelsManifest(modelIDs, imageInputModels, nil, nil)
 	if err != nil {
 		return body
 	}
