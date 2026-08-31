@@ -663,11 +663,40 @@ func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabiliti
 			modalities: []any{"text"},
 		},
 		{
-			name:  "custom OpenAI-compatible host",
+			name:  "custom OpenAI-compatible host uses model fallback",
 			model: "gpt-5.6-sol",
 			accounts: []Account{{
 				ID: 18, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
 				Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
+			}},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "mixed OAuth and custom OpenAI candidates use model fallback",
+			model: "gpt-5.6-sol",
+			accounts: []Account{
+				{ID: 21, Platform: PlatformOpenAI, Type: AccountTypeOAuth},
+				{
+					ID: 22, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+					Credentials: map[string]any{
+						"base_url":      "https://openai-compatible.example.test/v1",
+						"model_mapping": map[string]any{"gpt-5.6-sol": "gpt-5.6-sol"},
+					},
+				},
+			},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:  "synced custom OpenAI text capability overrides model fallback",
+			model: "gpt-5.6-sol",
+			accounts: []Account{{
+				ID: 23, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"base_url": "https://openai-compatible.example.test/v1"},
+				Extra: map[string]any{UpstreamModelMetadataExtraKey: UpstreamModelMetadataSnapshot{
+					Models: map[string]UpstreamModelMetadata{
+						"gpt-5.6-sol": {ID: "gpt-5.6-sol", InputModalities: []string{"text"}},
+					},
+				}},
 			}},
 			modalities: []any{"text"},
 		},

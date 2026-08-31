@@ -1059,6 +1059,12 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 	if account == nil {
 		return false
 	}
+	if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
+		modalities := normalizeCodexInputModalities(metadata.InputModalities)
+		if len(modalities) > 0 {
+			return stringSliceContains(modalities, "image")
+		}
+	}
 	switch account.Platform {
 	case PlatformOpenAI:
 		if !isOpenAICodexImageInputModel(upstreamModel) {
@@ -1070,8 +1076,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		if !account.IsOpenAIApiKey() {
 			return false
 		}
-		baseURL := strings.TrimSpace(account.GetCredential("base_url"))
-		return baseURL == "" || isOfficialOpenAIModelsBaseURL(baseURL)
+		return true
 	case PlatformGrok:
 		if !isOfficialGrokCodexBaseURL(account.GetGrokBaseURL()) {
 			return false
