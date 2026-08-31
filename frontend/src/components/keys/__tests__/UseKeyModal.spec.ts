@@ -341,7 +341,7 @@ describe('UseKeyModal', () => {
     expect(codeBlocks.join('\n')).toContain('experimental_bearer_token = "sk-grok-codex-test"')
   })
 
-  it.each(['minimax', 'composite'] as const)('renders MiniMax-M3 tool setup for %s groups', async (platform) => {
+  it.each(['minimax'] as const)('renders MiniMax-M3 tool setup for %s groups', async (platform) => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -370,8 +370,9 @@ describe('UseKeyModal', () => {
       'ANTHROPIC_DEFAULT_FABLE_MODEL',
       'CLAUDE_CODE_SUBAGENT_MODEL'
     ]) {
-      expect(claudeCode).toContain(`export ${name}="MiniMax-M3"`)
+      expect(claudeCode).toContain(`export ${name}="MiniMax-M3[1m]"`)
     }
+    expect(claudeCode).toContain('export CLAUDE_CODE_AUTO_COMPACT_WINDOW="1000000"')
 
     const codexTab = wrapper.findAll('button').find((button) =>
       button.text().includes('keys.useKeyModal.cliTabs.codexCli')
@@ -403,6 +404,32 @@ describe('UseKeyModal', () => {
     expect(openCodeConfig.provider.minimax.npm).toBe('@ai-sdk/openai-compatible')
     expect(openCodeConfig.provider.minimax.models['MiniMax-M3'].limit.context).toBe(1000000)
     expect(openCodeConfig.provider.minimax.models['MiniMax-M3'].modalities.input).toEqual(['text', 'image'])
+  })
+
+  it('does not force MiniMax model settings for composite Claude Code', () => {
+    const wrapper = mount(UseKeyModal, {
+      props: {
+        show: true,
+        apiKey: 'sk-composite-test',
+        baseUrl: 'https://example.com/v1',
+        platform: 'composite'
+      },
+      global: {
+        stubs: {
+          BaseDialog: {
+            template: '<div><slot /><slot name="footer" /></div>'
+          },
+          Icon: {
+            template: '<span />'
+          }
+        }
+      }
+    })
+
+    const claudeCode = wrapper.findAll('pre code').map((code) => code.text()).join('\n')
+    expect(claudeCode).not.toContain('MiniMax-M3')
+    expect(claudeCode).not.toContain('ANTHROPIC_MODEL')
+    expect(claudeCode).not.toContain('CLAUDE_CODE_AUTO_COMPACT_WINDOW')
   })
 
   it('keeps legacy OpenAI Codex config as the default', () => {

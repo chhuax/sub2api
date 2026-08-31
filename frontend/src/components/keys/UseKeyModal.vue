@@ -766,7 +766,7 @@ const currentFiles = computed((): FileConfig[] => {
       if (activeClientTab.value === 'codex') {
         return generateRoutedCodexFiles(apiBase, apiKey, 'minimax')
       }
-      return generateAnthropicFiles(baseRoot, apiKey, 'MiniMax-M3')
+      return generateAnthropicFiles(baseRoot, apiKey, 'MiniMax-M3[1m]', 1000000)
     case 'composite':
       if (activeClientTab.value === 'codex') {
         return generateRoutedCodexFiles(apiBase, apiKey, 'composite')
@@ -780,7 +780,7 @@ const currentFiles = computed((): FileConfig[] => {
   }
 })
 
-function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string): FileConfig[] {
+function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string, contextWindow?: number): FileConfig[] {
   const environment: Record<string, string> = {
     ANTHROPIC_BASE_URL: baseUrl,
     ANTHROPIC_AUTH_TOKEN: apiKey
@@ -792,9 +792,13 @@ function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string)
     environment.ANTHROPIC_DEFAULT_HAIKU_MODEL = model
     environment.ANTHROPIC_DEFAULT_FABLE_MODEL = model
     environment.CLAUDE_CODE_SUBAGENT_MODEL = model
+    environment.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
+  }
+  if (contextWindow) {
+    environment.CLAUDE_CODE_AUTO_COMPACT_WINDOW = String(contextWindow)
   }
   environment.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
-  environment.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
+  const useExtendedEnvironment = Boolean(model || contextWindow)
 
   let path: string
   let content: string
@@ -802,21 +806,27 @@ function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string)
   switch (activeTab.value) {
     case 'unix':
       path = 'Terminal'
-      content = Object.entries(environment)
-        .map(([name, value]) => `export ${name}="${value}"`)
-        .join('\n')
+      content = useExtendedEnvironment
+        ? Object.entries(environment).map(([name, value]) => `export ${name}="${value}"`).join('\n')
+        : `export ANTHROPIC_BASE_URL="${baseUrl}"
+export ANTHROPIC_AUTH_TOKEN="${apiKey}"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     case 'cmd':
       path = 'Command Prompt'
-      content = Object.entries(environment)
-        .map(([name, value]) => `set ${name}=${value}`)
-        .join('\n')
+      content = useExtendedEnvironment
+        ? Object.entries(environment).map(([name, value]) => `set ${name}=${value}`).join('\n')
+        : `set ANTHROPIC_BASE_URL=${baseUrl}
+set ANTHROPIC_AUTH_TOKEN=${apiKey}
+set CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     case 'powershell':
       path = 'PowerShell'
-      content = Object.entries(environment)
-        .map(([name, value]) => `$env:${name}="${value}"`)
-        .join('\n')
+      content = useExtendedEnvironment
+        ? Object.entries(environment).map(([name, value]) => `$env:${name}="${value}"`).join('\n')
+        : `$env:ANTHROPIC_BASE_URL="${baseUrl}"
+$env:ANTHROPIC_AUTH_TOKEN="${apiKey}"
+$env:CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`
       break
     default:
       path = 'Terminal'
@@ -827,10 +837,19 @@ function generateAnthropicFiles(baseUrl: string, apiKey: string, model?: string)
     ? '~/.claude/settings.json'
     : '%USERPROFILE%\\.claude\\settings.json'
 
-  const vscodeContent = JSON.stringify({
-    $schema: 'https://json.schemastore.org/claude-code-settings.json',
-    env: environment
-  }, null, 2)
+  const vscodeContent = useExtendedEnvironment
+    ? JSON.stringify({
+        $schema: 'https://json.schemastore.org/claude-code-settings.json',
+        env: environment
+      }, null, 2)
+    : `{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "ANTHROPIC_BASE_URL": "${baseUrl}",
+    "ANTHROPIC_AUTH_TOKEN": "${apiKey}",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  }
+}`
 
   return [
     { path, content },
