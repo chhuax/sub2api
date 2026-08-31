@@ -124,6 +124,13 @@ func TestGatewayCodexModels_NonOpenAIGroupsUseMappedModels(t *testing.T) {
 			modalities: []string{"text"},
 		},
 		{
+			name:       "MiniMax",
+			platform:   service.PlatformMiniMax,
+			model:      "MiniMax-M3",
+			efforts:    []string{"none", "high"},
+			modalities: []string{"text", "image"},
+		},
+		{
 			name:       "provider-qualified Claude",
 			platform:   service.PlatformAnthropic,
 			model:      "anthropic/claude-sonnet-4-6",
@@ -801,6 +808,7 @@ func TestDefaultModelIDsForPlatform_CNProvidersKeepClaudeDefaults(t *testing.T) 
 
 func TestDefaultCodexModelIDsForPlatform_DeepSeekUsesDeepSeekModels(t *testing.T) {
 	require.Equal(t, []string{"deepseek-v4-pro", "deepseek-v4-flash"}, defaultCodexModelIDsForPlatform(service.PlatformDeepseek))
+	require.Equal(t, []string{"MiniMax-M3"}, defaultCodexModelIDsForPlatform(service.PlatformMiniMax))
 	require.Equal(t, defaultModelIDsForPlatform(service.PlatformAnthropic), defaultCodexModelIDsForPlatform(service.PlatformAnthropic))
 }
 

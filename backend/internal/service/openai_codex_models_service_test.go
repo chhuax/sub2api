@@ -492,6 +492,73 @@ func TestBuildCodexModelsManifestForGroupAdvertisesOfficialOpenAIResponsesImageI
 	require.Equal(t, []any{"text", "image"}, models[0]["input_modalities"])
 }
 
+func TestBuildCodexModelsManifestForGroupKeepsMiniMaxCapabilitiesPerModel(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 703
+	svc := &GatewayService{
+		accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+			groupID: {{
+				ID:          3,
+				Platform:    PlatformMiniMax,
+				Status:      StatusActive,
+				Schedulable: true,
+			}},
+		}},
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformMiniMax},
+		"",
+		[]string{"MiniMax-M3", "MiniMax-M2.7"},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 2)
+	bySlug := map[string]map[string]any{}
+	for _, model := range models {
+		bySlug[model["slug"].(string)] = model
+	}
+	require.Equal(t, []any{"text", "image"}, bySlug["MiniMax-M3"]["input_modalities"])
+	require.EqualValues(t, 1_000_000, bySlug["MiniMax-M3"]["context_window"])
+	require.Equal(t, []string{"none", "high"}, effortsFromManifestModel(t, bySlug["MiniMax-M3"]))
+	require.Equal(t, []any{"text"}, bySlug["MiniMax-M2.7"]["input_modalities"])
+}
+
+func TestBuildCodexModelsManifestForCompositeKeepsOpenAIAndMiniMaxCapabilitiesSeparate(t *testing.T) {
+	t.Parallel()
+
+	const groupID int64 = 704
+	svc := &GatewayService{
+		accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+			groupID: {
+				{ID: 4, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true},
+				{ID: 5, Platform: PlatformMiniMax, Status: StatusActive, Schedulable: true},
+			},
+		}},
+	}
+
+	body, err := svc.BuildCodexModelsManifestForGroup(
+		context.Background(),
+		&Group{ID: groupID, Platform: PlatformComposite},
+		"",
+		[]string{"gpt-5.6-sol", "MiniMax-M3", "MiniMax-M2.7"},
+	)
+	require.NoError(t, err)
+
+	models := decodeCodexManifestModels(t, body)
+	require.Len(t, models, 3)
+	bySlug := map[string]map[string]any{}
+	for _, model := range models {
+		bySlug[model["slug"].(string)] = model
+	}
+	require.Equal(t, []any{"text", "image"}, bySlug["gpt-5.6-sol"]["input_modalities"])
+	require.Equal(t, []any{"text", "image"}, bySlug["MiniMax-M3"]["input_modalities"])
+	require.Equal(t, []any{"text"}, bySlug["MiniMax-M2.7"]["input_modalities"])
+}
+
 func TestBuildCodexModelsManifestForGroupUsesConservativeProviderImageCapabilities(t *testing.T) {
 	t.Parallel()
 

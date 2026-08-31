@@ -293,6 +293,7 @@ const (
 	configuredCodexCustomDescription   = "Custom model routed through Sub2API."
 	configuredCodexFallbackContext     = 272_000
 	configuredCodexDeepSeekV4Context   = 1_000_000
+	configuredCodexMiniMaxM3Context    = 1_000_000
 	configuredCodexGrokContext         = 500_000
 	configuredCodexGrokBuildContext    = 256_000
 	configuredCodexGPT56MaxContext     = 872_000
@@ -418,6 +419,20 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.SupportsParallelToolCalls = true
 		descriptor.ContextWindow = configuredCodexDeepSeekV4Context
 		descriptor.MaxContextWindow = configuredCodexDeepSeekV4Context
+	}
+
+	if isMiniMaxM3CodexModel(modelID) {
+		defaultReasoningLevel := "high"
+		descriptor.DisplayName = "MiniMax-M3"
+		descriptor.Description = "MiniMax coding and reasoning model routed through Sub2API."
+		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
+		descriptor.SupportedReasoningLevels = []configuredCodexReasoningLevel{
+			{Effort: "none", Description: "Use MiniMax-M3 without extended reasoning"},
+			{Effort: "high", Description: "Use MiniMax-M3 with extended reasoning"},
+		}
+		descriptor.SupportsParallelToolCalls = true
+		descriptor.ContextWindow = configuredCodexMiniMaxM3Context
+		descriptor.MaxContextWindow = configuredCodexMiniMaxM3Context
 	}
 
 	if isGrokCodexModel(modelID) {
@@ -613,6 +628,11 @@ func deepSeekCodexDisplayName(modelID string) string {
 
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
+}
+
+func isMiniMaxM3CodexModel(modelID string) bool {
+	normalized := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	return normalized == "minimax-m3"
 }
 
 func isGrokCodexModel(modelID string) bool {
@@ -947,7 +967,7 @@ func groupCodexModelSupportsImageInput(
 			return false
 		}
 	}
-	if platform != PlatformOpenAI && platform != PlatformGrok {
+	if platform != PlatformOpenAI && platform != PlatformGrok && platform != PlatformMiniMax {
 		return false
 	}
 
@@ -1058,6 +1078,8 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		}
 		canonical := xai.ResolveGrokTextResponsesModelID(upstreamModel)
 		return isGrokCodexImageInputModel(canonical)
+	case PlatformMiniMax:
+		return isMiniMaxM3CodexModel(upstreamModel)
 	default:
 		return false
 	}
