@@ -534,7 +534,7 @@ func (s *OpenAIGatewayService) buildInputTokensUpstreamRequest(
 	targetURL := openaiPlatformAPIInputTokensURL
 	if account.Type == AccountTypeAPIKey {
 		baseURL := account.GetOpenAIBaseURL()
-		if account.SupportsNativeResponses() && account.IsAdaptiveAPIProtocol() {
+		if account.UsesNativeCNResponses() && account.IsAdaptiveAPIProtocol() {
 			baseURL = account.GetCNProtocolBaseURL(APIProtocolResponses)
 		}
 		if strings.TrimSpace(baseURL) != "" {
