@@ -272,7 +272,7 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
-// IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
+// IsKimi / IsZhipu / IsDeepseek / IsMiniMax 标识国产 OpenAI 兼容供应商账号。
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi
 }
@@ -1394,8 +1394,8 @@ func (a *Account) IsCodingPlan() bool {
 
 // GetAPIProtocol 返回国产供应商账号的上游 API 协议。存储于
 // credentials["api_protocol"]；缺失或与平台不匹配时回退 chat_completions
-// （与既有行为完全一致）。responses 协议仅 deepseek/minimax 支持；
-// kimi/zhipu 无此端点。
+// （与既有行为完全一致）。responses 协议仅 deepseek / kimi / minimax 支持（官方原生
+// Responses 端点，适配 Codex）；zhipu 无此端点。
 func (a *Account) GetAPIProtocol() string {
 	if a == nil || !a.IsCNProvider() {
 		return APIProtocolChatCompletions
@@ -1406,7 +1406,7 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolAnthropic:
 		return APIProtocolAnthropic
 	case APIProtocolResponses:
-		if a.SupportsNativeResponses() {
+		if a.SupportsNativeCNResponses() {
 			return APIProtocolResponses
 		}
 	case APIProtocolChatCompletions:
@@ -1415,8 +1415,32 @@ func (a *Account) GetAPIProtocol() string {
 	return APIProtocolChatCompletions
 }
 
-func (a *Account) SupportsNativeResponses() bool {
-	return a != nil && (a.Platform == PlatformDeepseek || a.Platform == PlatformMiniMax)
+// SupportsNativeCNResponses 报告该国产供应商是否提供原生 Responses 端点。
+// DeepSeek 官方为 /responses（无 /v1）；Kimi 与 MiniMax 均支持 /v1/responses。
+func (a *Account) SupportsNativeCNResponses() bool {
+	if a == nil {
+		return false
+	}
+	switch a.Platform {
+	case PlatformDeepseek, PlatformKimi, PlatformMiniMax:
+		return true
+	default:
+		return false
+	}
+}
+
+// UsesNativeCNResponses 报告当前账号是否应按原生 Responses 协议转发
+// （显式 responses，或 adaptive 且平台具备原生端点）。
+func (a *Account) UsesNativeCNResponses() bool {
+	if a == nil || !a.SupportsNativeCNResponses() {
+		return false
+	}
+	switch a.GetAPIProtocol() {
+	case APIProtocolResponses, APIProtocolAdaptive:
+		return true
+	default:
+		return false
+	}
 }
 
 // IsAdaptiveAPIProtocol 报告账号是否按入站协议动态选择供应商原生端点。

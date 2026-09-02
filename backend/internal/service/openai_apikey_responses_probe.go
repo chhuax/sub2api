@@ -123,12 +123,12 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 		return
 	}
 	if account.IsCNProvider() {
-		// 国产 OpenAI 兼容上游普遍仅支持 /v1/chat/completions，
-		// 不存在 /v1/responses 端点。直接落标 false 走 Chat Completions 直转，跳过网络探测。
-		// 例外：原生支持 Responses 的固定 responses 和 adaptive 账号使用官方端点，
-		// 落标 force_responses；其余协议显式重置为 auto，避免切换后残留强制模式。
-		if account.GetAPIProtocol() == APIProtocolResponses ||
-			(account.SupportsNativeResponses() && account.IsAdaptiveAPIProtocol()) {
+		// 国产 OpenAI 兼容上游默认仅支持 /v1/chat/completions。直接落标 false
+		// 走 Chat Completions 直转，跳过网络探测。
+		// 例外：deepseek / kimi / minimax 的固定 responses 和 adaptive 账号使用官方原生
+		// Responses 端点，落标 force_responses；其余协议显式重置为 auto，避免
+		// 切换后残留强制模式。
+		if account.UsesNativeCNResponses() {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 				openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
 				openai_compat.ExtraKeyResponsesSupported: true,
@@ -278,7 +278,7 @@ func responsesProbeVerdictIsConclusive(status int, body []byte) bool {
 // isResponsesEndpointSupportedByStatus 根据探测响应的 HTTP 状态码判定上游
 // 是否暴露 /v1/responses 端点。
 //
-// 关键观察：第三方 OpenAI 兼容上游（DeepSeek/Kimi 等）对未知端点统一返回 404
+// 关键观察：第三方 OpenAI 兼容上游（DeepSeek/Kimi/MiniMax 等）对未知端点统一返回 404
 // 或 405；而 OpenAI 官方/有 Responses 实现的上游会因为请求体最简（缺字段）
 // 返回 400/422 等业务错误，但端点本身存在。
 //

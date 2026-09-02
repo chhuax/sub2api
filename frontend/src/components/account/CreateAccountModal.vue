@@ -161,7 +161,7 @@
             Grok
           </button>
         </div>
-        <!-- CN providers row -->
+        <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek / MiniMax -->
         <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
           <button
             type="button"
@@ -466,7 +466,7 @@
         </div>
       </div>
 
-      <!-- Account Mode Selection -->
+      <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek / MiniMax) -->
       <div v-if="isCNPlatform">
         <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-mode">
@@ -496,7 +496,7 @@
               <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.cnProviders.accountMode.paygDesc') }}</span>
             </div>
           </button>
-          <!-- Coding Plan -->
+          <!-- Coding Plan (kimi / zhipu / minimax — DeepSeek has no coding plan) -->
           <button
             v-if="form.platform !== 'deepseek'"
             type="button"
@@ -1332,7 +1332,7 @@
               />
             </div>
           </div>
-          <p v-if="form.platform !== 'deepseek' && form.platform !== 'minimax'" class="input-hint">
+          <p v-if="!cnSupportsNativeResponses(form.platform)" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -3827,6 +3827,7 @@ import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
   isHeaderOverrideCapable,
@@ -4019,10 +4020,10 @@ const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
-// ── 国产供应商账号类型、API 协议与端点 ──
+// ── 国产供应商（Kimi / Zhipu / DeepSeek / MiniMax）账号类型、API 协议与端点 ──
 const accountMode = ref<CnAccountMode>('payg')
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
-// responses=供应商原生 Responses 端点（Codex）。与账号类型正交。
+// responses=deepseek / kimi / minimax 原生 Responses 端点（Codex）。与账号类型正交。
 const apiProtocol = ref<CnApiProtocol>('adaptive')
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
 const zhipuOrganization = ref('')
@@ -4043,14 +4044,14 @@ const cnPresetPlatform = computed<CnPlatform>(() => {
   }
   return 'kimi'
 })
-// 当前平台可选的协议档。
+// 当前平台可选的协议档由原生 Responses 能力决定。
 const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
   const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
     { value: 'adaptive', labelKey: 'adaptive' },
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (form.platform === 'deepseek' || form.platform === 'minimax') {
+  if (cnSupportsNativeResponses(form.platform)) {
     opts.push({ value: 'responses', labelKey: 'responses' })
   }
   return opts
@@ -4060,7 +4061,7 @@ const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; l
     { value: 'chat_completions', labelKey: 'chatCompletions' },
     { value: 'anthropic', labelKey: 'anthropic' }
   ]
-  if (form.platform === 'deepseek' || form.platform === 'minimax') opts.push({ value: 'responses', labelKey: 'responses' })
+  if (cnSupportsNativeResponses(form.platform)) opts.push({ value: 'responses', labelKey: 'responses' })
   return opts
 })
 
@@ -4096,7 +4097,7 @@ const cnAccentIconClass = computed(() => {
       return 'bg-primary-500 text-white'
   }
 })
-// 切换国产供应商平台：强制 apikey 类型，DeepSeek 锁定 payg，
+// 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
 // 协议回落 adaptive，并把 base url 重置为该平台默认端点。
 function selectCNPlatform(platform: CnPlatform) {
   form.platform = platform

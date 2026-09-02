@@ -249,7 +249,7 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
   { label: 'eu-west-1', url: 'https://eu-west-1.api.x.ai/v1' }
 ]
 
-// ========== 国产供应商 base_url 预设 ==========
+// ========== 国产供应商（Kimi / Zhipu / DeepSeek / MiniMax）base_url 预设 ==========
 // 与后端 service/domain_constants.go 的默认 base url 保持一致。
 // 账号类型（payg 按量付费 / coding 编程套餐）决定额度监控方式；
 // API 协议（chat_completions / anthropic / responses）决定转发端点与格式，
@@ -257,9 +257,14 @@ export const GROK_BASE_URL_PRESETS: GrokBaseUrlPreset[] = [
 
 export type CnAccountMode = 'payg' | 'coding'
 
-/** 支持原生 responses 的平台在 adaptive 模式下会按入站协议选择原生端点。 */
+/** deepseek / kimi / minimax 支持原生 responses；adaptive 会按入站协议选择原生端点。 */
 export type CnApiProtocol = 'adaptive' | 'chat_completions' | 'anthropic' | 'responses'
 export type CnNativeApiProtocol = Exclude<CnApiProtocol, 'adaptive'>
+
+/** DeepSeek、Kimi 与 MiniMax（按量付费 / Coding Plan）提供原生 Responses 端点。 */
+export function cnSupportsNativeResponses(platform: string): boolean {
+  return platform === 'deepseek' || platform === 'kimi' || platform === 'minimax'
+}
 
 export interface CnBaseUrlPreset {
   mode: CnAccountMode
@@ -276,8 +281,10 @@ export const CN_BASE_URL_PRESETS: Record<CnPlatform, CnBaseUrlPreset[]> = {
   kimi: [
     { mode: 'payg', protocol: 'chat_completions', label: 'Moonshot', url: 'https://api.moonshot.cn/v1' },
     { mode: 'payg', protocol: 'anthropic', label: 'Moonshot Anthropic', url: 'https://api.moonshot.cn/anthropic' },
+    { mode: 'payg', protocol: 'responses', label: 'Moonshot Responses', url: 'https://api.moonshot.cn/v1' },
     { mode: 'coding', protocol: 'chat_completions', label: 'Kimi For Coding', url: 'https://api.kimi.com/coding/v1' },
-    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' }
+    { mode: 'coding', protocol: 'anthropic', label: 'Kimi Coding Anthropic', url: 'https://api.kimi.com/coding' },
+    { mode: 'coding', protocol: 'responses', label: 'Kimi Coding Responses', url: 'https://api.kimi.com/coding/v1' }
   ],
   zhipu: [
     { mode: 'payg', protocol: 'chat_completions', label: 'GLM PaaS', url: 'https://open.bigmodel.cn/api/paas/v4' },
@@ -320,7 +327,7 @@ export function defaultCNBaseUrl(
         return ''
     }
   }
-  // Responses base 与 Chat Completions 相同，端点路径差异由后端处理。
+  // responses：Kimi / DeepSeek / MiniMax 的 base 与 chat_completions 相同（端点路径差异由后端处理）。
   switch (platform) {
     case 'kimi':
       return mode === 'coding' ? 'https://api.kimi.com/coding/v1' : 'https://api.moonshot.cn/v1'
@@ -345,9 +352,7 @@ export function defaultCNAdaptiveBaseUrls(
   return {
     chat_completions: defaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: defaultCNBaseUrl(platform, mode, 'anthropic'),
-    responses: platform === 'deepseek' || platform === 'minimax'
-      ? defaultCNBaseUrl(platform, mode, 'responses')
-      : ''
+    responses: cnSupportsNativeResponses(platform) ? defaultCNBaseUrl(platform, mode, 'responses') : ''
   }
 }
 

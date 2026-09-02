@@ -107,47 +107,6 @@ func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
 }
 
-func TestParseMiniMaxUsageTiers(t *testing.T) {
-	t.Parallel()
-	body := []byte(`{
-		"model_remains": [
-			{"model_name":"video","current_interval_remaining_percent":50},
-			{
-				"model_name":"general",
-				"current_interval_remaining_percent":98,
-				"current_weekly_remaining_percent":95,
-				"current_weekly_status":1,
-				"end_time":1780329600000,
-				"weekly_end_time":1780848000000
-			}
-		]
-	}`)
-
-	tiers := parseMiniMaxUsageTiers(body)
-	require.Len(t, tiers, 2)
-	require.Equal(t, "5h", tiers[0].Window)
-	require.InDelta(t, 2.0, tiers[0].UsedPercent, 1e-9)
-	require.NotEmpty(t, tiers[0].ResetAt)
-	require.Equal(t, "weekly", tiers[1].Window)
-	require.InDelta(t, 5.0, tiers[1].UsedPercent, 1e-9)
-	require.NotEmpty(t, tiers[1].ResetAt)
-}
-
-func TestParseMiniMaxUsageTiersSkipsInactiveWeeklyAndNonGeneral(t *testing.T) {
-	t.Parallel()
-	body := []byte(`{"model_remains":[{
-		"model_name":"general",
-		"current_interval_remaining_percent":"80",
-		"current_weekly_remaining_percent":70,
-		"current_weekly_status":3
-	}]}`)
-	tiers := parseMiniMaxUsageTiers(body)
-	require.Len(t, tiers, 1)
-	require.Equal(t, "5h", tiers[0].Window)
-	require.InDelta(t, 20.0, tiers[0].UsedPercent, 1e-9)
-	require.Empty(t, parseMiniMaxUsageTiers([]byte(`{"model_remains":[{"model_name":"video"}]}`)))
-}
-
 // TestParseZhipuTokenTiers_UnitClassification 显式 unit（3=5h / 6=weekly）优先分类，
 // 不能被 reset 时间排序覆盖（周期末尾周窗口会更早重置）。
 func TestParseZhipuTokenTiers_UnitClassification(t *testing.T) {
@@ -268,16 +227,6 @@ func TestKimiQuotaURL(t *testing.T) {
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/v1/"))
-}
-
-func TestMiniMaxQuotaURL(t *testing.T) {
-	t.Parallel()
-	require.Equal(t,
-		"https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
-		minimaxQuotaURL("https://api.minimaxi.com/v1"))
-	require.Equal(t,
-		"https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
-		minimaxQuotaURL("https://api.minimax.io/anthropic"))
 }
 
 // TestCNBalanceURL Kimi 固定端点；DeepSeek 基于 base_url 拼接。
@@ -449,7 +398,6 @@ func TestNormalizeOpenAICompatiblePlatform_SchedulerExactMatch(t *testing.T) {
 	require.Equal(t, PlatformKimi, NormalizeOpenAICompatiblePlatform(PlatformKimi))
 	require.Equal(t, PlatformZhipu, NormalizeOpenAICompatiblePlatform(PlatformZhipu))
 	require.Equal(t, PlatformDeepseek, NormalizeOpenAICompatiblePlatform(PlatformDeepseek))
-	require.Equal(t, PlatformMiniMax, NormalizeOpenAICompatiblePlatform(PlatformMiniMax))
 	// 其他平台（含空、anthropic、未知）一律归一为 openai。
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(""))
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(PlatformAnthropic))
@@ -503,7 +451,6 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 		{"zhipu default", PlatformZhipu, "", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, "https://open.bigmodel.cn/api/coding/paas/v4/models"},
 		{"deepseek", PlatformDeepseek, "", "https://api.deepseek.com/v1/models"},
-		{"minimax", PlatformMiniMax, "", "https://api.minimaxi.com/v1/models"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -522,7 +469,7 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 }
 
 // TestGetAPIProtocol 验证协议凭证维度的平台校验矩阵：
-// responses 仅原生支持的平台；缺失/非法值回退 chat_completions。
+// responses 仅 deepseek / kimi；缺失/非法值回退 chat_completions（与旧行为一致）。
 func TestGetAPIProtocol(t *testing.T) {
 	t.Parallel()
 
@@ -541,14 +488,24 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformMiniMax, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformDeepseek, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformMiniMax, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformKimi, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformKimi, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformZhipu, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformDeepseek, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformMiniMax, APIProtocolAdaptive).GetAPIProtocol())
-	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, APIProtocolResponses).GetAPIProtocol(), "kimi 无 responses 端点")
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformZhipu, APIProtocolResponses).GetAPIProtocol(), "zhipu 无 responses 端点")
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, "bogus").GetAPIProtocol(), "非法值回退默认")
 	require.Equal(t, APIProtocolChatCompletions, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).GetAPIProtocol(), "非 CN 供应商恒为默认")
+}
+
+func TestSupportsNativeCNResponses(t *testing.T) {
+	t.Parallel()
+	require.True(t, (&Account{Platform: PlatformDeepseek}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformKimi}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformKimi, Credentials: map[string]any{"account_mode": AccountModeCoding}}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformMiniMax}).SupportsNativeCNResponses())
+	require.False(t, (&Account{Platform: PlatformZhipu}).SupportsNativeCNResponses())
+	require.False(t, (&Account{Platform: PlatformOpenAI}).SupportsNativeCNResponses())
 }
 
 func TestAdaptiveProtocolBaseURLs(t *testing.T) {
@@ -625,10 +582,6 @@ func TestAnthropicProtocolBaseURL(t *testing.T) {
 		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
 	}).GetAnthropicProtocolBaseURL())
-	require.Equal(t, "https://api.minimaxi.com/anthropic", (&Account{
-		Platform: PlatformMiniMax, Type: AccountTypeAPIKey,
-		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
-	}).GetAnthropicProtocolBaseURL())
 
 	// 凭证 base_url 覆盖默认值
 	require.Equal(t, "https://custom.example.com/anthropic", (&Account{
@@ -699,12 +652,14 @@ func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
 	require.Equal(t, "https://relay.example.com/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://relay.example.com"))
 	require.Equal(t, "https://relay.example.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://relay.example.com/v1"))
 	require.Equal(t, "https://api.openai.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformOpenAI, "https://api.openai.com"))
-	require.Equal(t, "https://api.minimaxi.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformMiniMax, DefaultMiniMaxBaseURL))
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", buildOpenAIResponsesURLForPlatform(PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"))
+	require.Equal(t, "https://api.moonshot.cn/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.moonshot.cn/v1"))
+	require.Equal(t, "https://api.kimi.com/coding/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.kimi.com/coding/v1"))
+	require.Equal(t, "https://api.minimaxi.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformMiniMax, DefaultMiniMaxBaseURL))
 }
 
 // TestNormalizeDeepSeekResponsesRequestBody 无状态适配：强制 store=false、
-// 清除 previous_response_id；非 deepseek responses 协议原样返回。
+// 清除 previous_response_id；非原生 CN Responses 协议原样返回。
 func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	t.Parallel()
 
@@ -729,6 +684,30 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	// 非 responses 协议（deepseek CC 账号）原样返回
 	deepseekCC := &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey}
 	require.Equal(t, string(body), string(normalizeDeepSeekResponsesRequestBody(deepseekCC, body)))
+
+	kimiResponses := &Account{
+		Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
+	}
+	kimiNormalized := normalizeDeepSeekResponsesRequestBody(kimiResponses, body)
+	require.False(t, gjson.GetBytes(kimiNormalized, "store").Bool())
+	require.False(t, gjson.GetBytes(kimiNormalized, "previous_response_id").Exists())
+
+	kimiCodingAdaptive := &Account{
+		Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive, "account_mode": AccountModeCoding},
+	}
+	kimiCodingNormalized := normalizeDeepSeekResponsesRequestBody(kimiCodingAdaptive, body)
+	require.False(t, gjson.GetBytes(kimiCodingNormalized, "store").Bool())
+	require.False(t, gjson.GetBytes(kimiCodingNormalized, "previous_response_id").Exists())
+
+	miniMaxResponses := &Account{
+		Platform: PlatformMiniMax, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
+	}
+	miniMaxNormalized := normalizeDeepSeekResponsesRequestBody(miniMaxResponses, body)
+	require.False(t, gjson.GetBytes(miniMaxNormalized, "store").Bool())
+	require.False(t, gjson.GetBytes(miniMaxNormalized, "previous_response_id").Exists())
 
 	// openai 账号原样返回
 	openai := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
